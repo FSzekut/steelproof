@@ -1,0 +1,35 @@
+.venv/
+venv/
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Dados originais do bootcamp e artefatos locais
+data/
+final_steel_en/
+*.zip
+*.pkl
+*.joblib
+*.onnx
+
+# Material interno, backups e artefatos de execução
+AUDITORIA_INTERNA.md
+Notebook-Etapa2-revisado.ipynb
+Notebook.ipynb.bak
+.ipynb_checkpoints/
+.jupyter/
+*:Zone.Identifier
+*.DS_Store
+.DS_Store
+Thumbs.db
+*.log
+
+build/
+dist/
+*.egg-info/
