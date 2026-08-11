@@ -182,6 +182,49 @@ sem modelo algum. O Ridge é a referência linear, com a colinearidade sob contr
 captura interações não lineares. O LightGBM aplica boosting regularizado. O CatBoost entrou por
 causa da esparsidade das colunas de adição, já que 22 das 34 ficam em zero na maioria das corridas.
 
+## Hiperparâmetros
+
+A busca é a mesma para todos: validação cruzada temporal com `TimeSeriesSplit` de 5 dobras, sempre
+sobre o treino, métrica MAE, semente 42. A partição temporal importa aqui mais que o de costume,
+porque o teste são as 488 corridas posteriores no tempo: validar embaralhando deixaria o modelo
+treinar em corridas futuras para prever passadas, e o número de validação sairia otimista.
+
+O Ridge tem um só parâmetro, então varri a grade inteira com `GridSearchCV`, 25 valores de `alpha`
+em escala logarítmica de 10⁻³ a 10³. Nos três modelos de árvore o produto das grades passa de uma
+centena de combinações, e usei `RandomizedSearchCV` com orçamento fixo de sorteios.
+
+| Modelo | Espaço buscado | Sorteios | Escolhido | MAE na validação |
+|---|---|---:|---|---:|
+| Ridge | `alpha`: 25 valores, 10⁻³ a 10³ | grade inteira | `alpha` 3,1623 | 6,34 °C |
+| Random Forest | `max_depth` 3–12 ou livre; `min_samples_leaf` 1–20; `max_features` sqrt/log2/0,3/0,6/1,0 | 15 | `max_depth` 12; `min_samples_leaf` 2; `max_features` 1,0 | 6,32 °C |
+| LightGBM | `num_leaves` 7–63; `learning_rate` 0,01–0,1; `min_child_samples` 5–40; `subsample` 0,7–1,0; `colsample_bytree` 0,6–1,0 | 20 | `num_leaves` 31; `learning_rate` 0,01; `min_child_samples` 10; `subsample` 0,7; `colsample_bytree` 1,0 | 6,01 °C |
+| CatBoost | `depth` 4–10; `learning_rate` 0,01–0,1; `l2_leaf_reg` 1–10 | 15 | `depth` 4; `learning_rate` 0,03; `l2_leaf_reg` 3 | 5,96 °C |
+
+Três decisões dentro dessas grades não são padrão e valem a explicação.
+
+**O número de árvores não foi buscado.** Fixei 400 no LightGBM e 500 iterações no CatBoost, em vez
+de deixar a parada antecipada escolher. A parada antecipada precisa de uma faixa de validação
+monitorada a cada iteração, e dentro de uma busca com `TimeSeriesSplit` essa faixa teria de sair de
+dentro de cada dobra — encurtando justamente as primeiras, que já são as menores. Preferi fixar o
+teto e deixar o controle do sobreajuste com os parâmetros que o exercem de forma mais direta:
+`num_leaves`, `min_child_samples` e `subsample`.
+
+**`subsample_freq` está fixo em 1 na grade do LightGBM.** Sem esse parâmetro o LightGBM ignora
+`subsample` em silêncio, sem erro nem aviso. A busca varreria cinco valores de subamostragem que
+não teriam efeito nenhum, e eu concluiria que o parâmetro não importa.
+
+**A busca de hiperparâmetros e o modelo não paralelizam ao mesmo tempo.** O paralelismo fica dentro
+do estimador e a busca roda sequencial. Ativar os dois aninha processos e, com as bibliotecas que
+usam OpenMP, trava em vez de acelerar.
+
+Vale registrar uma tensão nos números acima: na validação cruzada o CatBoost termina à frente, por
+0,05 °C, e no teste a ordem se inverte. As duas diferenças estão abaixo do limiar de 0,3 °C que eu
+havia fixado no plano como relevante, o que é a própria razão de o desempate ter ido para outro
+critério — tratado adiante, em *Seleção do modelo final*.
+
+Os valores desta seção são os que o notebook da Etapa 2 imprime ao executar, e reproduzem com a
+semente fixada.
+
 ---
 
 # Resultados

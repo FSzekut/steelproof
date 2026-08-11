@@ -232,6 +232,74 @@ validação cruzada temporal. O <code>DummyRegressor</code> na média serve de p
 sem modelo algum. O Ridge é a referência linear, com a colinearidade sob controle. O Random Forest
 captura interações não lineares. O LightGBM aplica boosting regularizado. O CatBoost entrou por
 causa da esparsidade das colunas de adição, já que 22 das 34 ficam em zero na maioria das corridas.</p>
+<h2>Hiperparâmetros</h2>
+<p>A busca é a mesma para todos: validação cruzada temporal com <code>TimeSeriesSplit</code> de 5 dobras, sempre
+sobre o treino, métrica MAE, semente 42. A partição temporal importa aqui mais que o de costume,
+porque o teste são as 488 corridas posteriores no tempo: validar embaralhando deixaria o modelo
+treinar em corridas futuras para prever passadas, e o número de validação sairia otimista.</p>
+<p>O Ridge tem um só parâmetro, então varri a grade inteira com <code>GridSearchCV</code>, 25 valores de <code>alpha</code>
+em escala logarítmica de 10⁻³ a 10³. Nos três modelos de árvore o produto das grades passa de uma
+centena de combinações, e usei <code>RandomizedSearchCV</code> com orçamento fixo de sorteios.</p>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th>Espaço buscado</th>
+<th style="text-align: right;">Sorteios</th>
+<th>Escolhido</th>
+<th style="text-align: right;">MAE na validação</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ridge</td>
+<td><code>alpha</code>: 25 valores, 10⁻³ a 10³</td>
+<td style="text-align: right;">grade inteira</td>
+<td><code>alpha</code> 3,1623</td>
+<td style="text-align: right;">6,34 °C</td>
+</tr>
+<tr>
+<td>Random Forest</td>
+<td><code>max_depth</code> 3–12 ou livre; <code>min_samples_leaf</code> 1–20; <code>max_features</code> sqrt/log2/0,3/0,6/1,0</td>
+<td style="text-align: right;">15</td>
+<td><code>max_depth</code> 12; <code>min_samples_leaf</code> 2; <code>max_features</code> 1,0</td>
+<td style="text-align: right;">6,32 °C</td>
+</tr>
+<tr>
+<td>LightGBM</td>
+<td><code>num_leaves</code> 7–63; <code>learning_rate</code> 0,01–0,1; <code>min_child_samples</code> 5–40; <code>subsample</code> 0,7–1,0; <code>colsample_bytree</code> 0,6–1,0</td>
+<td style="text-align: right;">20</td>
+<td><code>num_leaves</code> 31; <code>learning_rate</code> 0,01; <code>min_child_samples</code> 10; <code>subsample</code> 0,7; <code>colsample_bytree</code> 1,0</td>
+<td style="text-align: right;">6,01 °C</td>
+</tr>
+<tr>
+<td>CatBoost</td>
+<td><code>depth</code> 4–10; <code>learning_rate</code> 0,01–0,1; <code>l2_leaf_reg</code> 1–10</td>
+<td style="text-align: right;">15</td>
+<td><code>depth</code> 4; <code>learning_rate</code> 0,03; <code>l2_leaf_reg</code> 3</td>
+<td style="text-align: right;">5,96 °C</td>
+</tr>
+</tbody>
+</table>
+<p>Três decisões dentro dessas grades não são padrão e valem a explicação.</p>
+<p><strong>O número de árvores não foi buscado.</strong> Fixei 400 no LightGBM e 500 iterações no CatBoost, em vez
+de deixar a parada antecipada escolher. A parada antecipada precisa de uma faixa de validação
+monitorada a cada iteração, e dentro de uma busca com <code>TimeSeriesSplit</code> essa faixa teria de sair de
+dentro de cada dobra — encurtando justamente as primeiras, que já são as menores. Preferi fixar o
+teto e deixar o controle do sobreajuste com os parâmetros que o exercem de forma mais direta:
+<code>num_leaves</code>, <code>min_child_samples</code> e <code>subsample</code>.</p>
+<p><strong><code>subsample_freq</code> está fixo em 1 na grade do LightGBM.</strong> Sem esse parâmetro o LightGBM ignora
+<code>subsample</code> em silêncio, sem erro nem aviso. A busca varreria cinco valores de subamostragem que
+não teriam efeito nenhum, e eu concluiria que o parâmetro não importa.</p>
+<p><strong>A busca de hiperparâmetros e o modelo não paralelizam ao mesmo tempo.</strong> O paralelismo fica dentro
+do estimador e a busca roda sequencial. Ativar os dois aninha processos e, com as bibliotecas que
+usam OpenMP, trava em vez de acelerar.</p>
+<p>Vale registrar uma tensão nos números acima: na validação cruzada o CatBoost termina à frente, por
+0,05 °C, e no teste a ordem se inverte. As duas diferenças estão abaixo do limiar de 0,3 °C que eu
+havia fixado no plano como relevante, o que é a própria razão de o desempate ter ido para outro
+critério — tratado adiante, em <em>Seleção do modelo final</em>.</p>
+<p>Os valores desta seção são os que o notebook da Etapa 2 imprime ao executar, e reproduzem com a
+semente fixada.</p>
 <hr />
 <h1>Resultados</h1>
 <h2>Desempenho comparado</h2>

@@ -46,43 +46,64 @@ O modelo usa a primeira temperatura como condição inicial e a última temperat
 O tratamento inclui auditoria de qualidade, engenharia de atributos, validação temporal e comparação
 entre Ridge, Random Forest, LightGBM e CatBoost.
 
-## Estrutura prevista para publicação
+## Estrutura
 
 ```text
 README.md
 Notebook.ipynb                  # plano e entendimento do problema
 Notebook-Etapa2.ipynb           # análise, preparação e modelagem
 Relatorio-Etapa3.md             # relatório técnico
-Relatorio-Etapa3.html           # versão formatada do relatório
+Relatorio-Etapa3.html           # versão formatada, autocontida
 Relatório de solução_ Steelproof.pdf
 build_relatorio.py              # gerador do relatório HTML
-data/                            # local, não versionado
+requirements.txt
+data/                           # local, não versionado — ver abaixo
 ```
-
-O notebook revisado com comentários do avaliador é material interno e não deve ser publicado.
-Backups, checkpoints, arquivos `Zone.Identifier`, `.DS_Store` e o ZIP original também devem ficar
-fora do repositório público.
 
 ## Dados
 
-Os sete CSVs vieram do material do bootcamp. Eles devem permanecer fora do repositório público até
-que os termos de uso da TripleTen confirmem que sua redistribuição é permitida.
+**Os sete CSVs não acompanham este repositório.** São material do bootcamp da TripleTen, e o
+código é meu mas os dados não. Redistribuí-los exigiria uma autorização que não tenho, então a
+opção foi publicar tudo o que descreve o trabalho e nada que pertença a terceiros.
 
-Para uma publicação segura, o notebook deve apontar para uma pasta local como:
+Na prática isso custa pouco a quem lê: os notebooks estão com todas as saídas preservadas, de modo
+que a auditoria de qualidade, os tratamentos, as decisões de modelagem e os resultados são
+verificáveis célula a célula sem executar nada.
+
+Para executar, coloque os arquivos em:
 
 ```text
 data/raw/final_steel_en/
 ```
 
-O repositório público pode documentar os nomes e o esquema dos arquivos sem incluir os dados
-originais. Se necessário, uma versão futura pode fornecer dados sintéticos para demonstrar a
-execução.
+com os nomes originais — `data_arc_en.csv`, `data_bulk_en.csv`, `data_bulk_time_en.csv`,
+`data_gas_en.csv`, `data_temp_en.csv`, `data_wire_en.csv`, `data_wire_time_en.csv`. O notebook
+procura nesse caminho primeiro e falha com uma mensagem explícita se não encontrar.
+
+## Sobre o histórico deste repositório
+
+Este repositório não herda o histórico do desenvolvimento, e isso é deliberado.
+
+O trabalho foi desenvolvido em um repositório do bootcamp que continha os dados originais desde o
+primeiro commit, junto com o material de outro caso e o notebook com os comentários do avaliador.
+Publicar aquele histórico exporia os três. Como um `.gitignore` não alcança arquivos já
+versionados, e reescrever o histórico é mais arriscado que recomeçar, optei por um repositório
+novo contendo apenas os artefatos publicáveis.
+
+A perda é real: o histórico mostraria a ordem em que as decisões foram tomadas, que é informação
+legítima para quem avalia o trabalho. O relatório compensa em parte, porque registra as decisões
+com a razão de cada uma, incluindo as que mudaram de ideia no caminho — a taxa marginal corrigida
+e o piso de referência remedido estão lá, com o antes e o depois.
 
 ## Ambiente
 
-O projeto foi desenvolvido em Python com pandas, scikit-learn, LightGBM e CatBoost. As versões
-exatas devem ser registradas em `requirements.txt` antes da publicação para tornar a execução
-reproduzível.
+Python com pandas, scikit-learn, LightGBM e CatBoost. As versões efetivamente usadas estão em
+`requirements.txt`:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## Próximos passos metodológicos
 
@@ -94,12 +115,19 @@ reproduzível.
 
 ## Relatório
 
-O PDF e o relatório HTML sintetizam o problema de negócio, a auditoria das fontes, as decisões de
-modelagem, os resultados e as limitações. O relatório não converte a economia estimada para reais
-porque a unidade da variável `Active power` não está documentada nos dados.
+`Relatorio-Etapa3.html` é a versão de leitura: autocontida, com os gráficos embutidos, e abre
+direto no navegador. Sintetiza o problema de negócio, a auditoria das fontes, as decisões de
+modelagem com os hiperparâmetros de cada uma, os resultados e as limitações. O PDF é a versão
+entregue na avaliação e acompanha o repositório.
 
-## Segurança e publicação
+O relatório **não converte a economia estimada para reais**, e isso é intencional. A unidade da
+variável `Active power` não está documentada, e a massa implicada não fecha com a capacidade
+informada sob nenhuma hipótese de rendimento. Em vez de arbitrar um fator e produzir um número
+apresentável, o relatório entrega a fórmula com o parâmetro em aberto e registra a pergunta a
+fazer à planta.
 
-Antes do primeiro push, verificar se o repositório não contém dados originais, notebook de revisão,
-backups, arquivos temporários, caminhos pessoais, credenciais ou artefatos de sistema. O PDF público
-deve ser a versão final de entrega, sem comentários internos do avaliador.
+Para regerar o HTML após editar o Markdown:
+
+```bash
+python build_relatorio.py
+```

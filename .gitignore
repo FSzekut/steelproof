@@ -1,7 +1,15 @@
+# Dados do bootcamp — não redistribuíveis. Ver README.
+data/
+final_steel_en/
+*.csv
+
+# Ambiente
 .venv/
 venv/
 .env
 .env.*
+
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -9,27 +17,27 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+build/
+dist/
+*.egg-info/
 
-# Dados originais do bootcamp e artefatos locais
-data/
-final_steel_en/
-*.zip
+# Modelos serializados
 *.pkl
 *.joblib
 *.onnx
 
-# Material interno, backups e artefatos de execução
-AUDITORIA_INTERNA.md
-Notebook-Etapa2-revisado.ipynb
-Notebook.ipynb.bak
+# Jupyter
 .ipynb_checkpoints/
 .jupyter/
+
+# Material interno de trabalho
+AUDITORIA_INTERNA.md
+Notebook-Etapa2-revisado.ipynb
+*.bak
+
+# Artefatos de sistema
 *:Zone.Identifier
-*.DS_Store
 .DS_Store
 Thumbs.db
 *.log
-
-build/
-dist/
-*.egg-info/
+*.zip
