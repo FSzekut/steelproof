@@ -5,6 +5,8 @@ apoiar decisões de aquecimento com menor consumo de energia.
 
 Projeto final do bootcamp de Data Science da TripleTen, desenvolvido por Fernando Szekut.
 
+📄 **Relatório completo, com os gráficos: <https://steelproof-relatorio.netlify.app>**
+
 ## O problema
 
 No forno-panela, a temperatura é ajustada por ciclos sucessivos de aquecimento e medição. O
@@ -115,10 +117,16 @@ pip install -r requirements.txt
 
 ## Relatório
 
-`Relatorio-Etapa3.html` é a versão de leitura: autocontida, com os gráficos embutidos, e abre
-direto no navegador. Sintetiza o problema de negócio, a auditoria das fontes, as decisões de
-modelagem com os hiperparâmetros de cada uma, os resultados e as limitações. O PDF é a versão
-entregue na avaliação e acompanha o repositório.
+**Leitura online, sem baixar nada: <https://steelproof-relatorio.netlify.app>**
+
+O mesmo conteúdo está aqui no repositório em três formatos. `Relatorio-Etapa3.html` é a versão
+de leitura, autocontida e com os gráficos embutidos, e é ela que está publicada no endereço
+acima. `Relatorio-Etapa3.md` é a fonte. Todos sintetizam o problema de negócio, a auditoria das
+fontes, as decisões de modelagem com os hiperparâmetros de cada uma, os resultados e as
+limitações.
+
+O PDF é a versão entregue na avaliação e **é anterior à seção de hiperparâmetros**, acrescentada
+em 11/08 a pedido do avaliador. Para o conteúdo atual, use o link ou o HTML.
 
 O relatório **não converte a economia estimada para reais**, e isso é intencional. A unidade da
 variável `Active power` não está documentada, e a massa implicada não fecha com a capacidade
