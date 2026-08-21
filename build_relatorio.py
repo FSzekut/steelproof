@@ -11,40 +11,100 @@ import base64
 import io
 import re
 import unicodedata
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import markdown
+from PIL import Image
+
+def num(v, casas=1):
+    """Formata número com arredondamento meio-para-cima e vírgula decimal.
+
+    O `%.1f` do Python arredonda meio-para-par e ainda sofre com a representação
+    binária: 38.65 sai como "38,6", enquanto a tabela do Markdown diz 38,7. Duas
+    versões do mesmo número na mesma página. Aqui o critério é o da tabela.
+    """
+    q = Decimal(1).scaleb(-casas)
+    return str(Decimal(str(v)).quantize(q, rounding=ROUND_HALF_UP)).replace(".", ",")
+
 
 AQUI = Path(__file__).parent
-TINTA = "#1c2833"
-AZUL = "#2c5f8a"
-AZUL_CLARO = "#7fa8c7"
-VERDE = "#3d7a5a"
-CINZA = "#9aa5ad"
-VERMELHO = "#b04a3a"
+# Duas paletas, espelhando as variáveis do CSS. O relatório tem tema escuro
+# desde sempre, mas os gráficos eram só claros: no escuro cada um virava uma
+# placa acesa no meio do texto. Agora cada gráfico sai nas duas versões e o
+# CSS escolhe, porque o tema pode vir do sistema ou do botão.
+PALETA_CLARA = {
+    "tinta": "#1c2833", "azul": "#2c5f8a", "azul_claro": "#7fa8c7",
+    "verde": "#3d7a5a", "cinza": "#9aa5ad", "vermelho": "#b04a3a",
+    "ambar": "#d9a441", "grade": "#eef1f3", "borda": "#cfd6db", "fundo": "#fffdfb",
+}
+PALETA_ESCURA = {
+    "tinta": "#dfe4e8", "azul": "#84b4dc", "azul_claro": "#5c86a6",
+    "verde": "#5f9e7d", "cinza": "#6b7280", "vermelho": "#c4553f",
+    "ambar": "#c99a3e", "grade": "#242c36", "borda": "#39434f", "fundo": "#0e1319",
+}
 
-plt.rcParams.update({
-    "font.family": "DejaVu Sans",
-    "font.size": 9.5,
-    "axes.edgecolor": "#cfd6db",
-    "axes.labelcolor": TINTA,
-    "text.color": TINTA,
-    "xtick.color": TINTA,
-    "ytick.color": TINTA,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "figure.dpi": 160,
-})
+TINTA = AZUL = AZUL_CLARO = VERDE = CINZA = VERMELHO = AMBAR = GRADE = FUNDO = ""
+
+
+def usar_paleta(p):
+    """Aplica uma paleta aos globais e ao rcParams do matplotlib."""
+    global TINTA, AZUL, AZUL_CLARO, VERDE, CINZA, VERMELHO, AMBAR, GRADE, FUNDO
+    TINTA, AZUL, AZUL_CLARO = p["tinta"], p["azul"], p["azul_claro"]
+    VERDE, CINZA, VERMELHO = p["verde"], p["cinza"], p["vermelho"]
+    AMBAR, GRADE, FUNDO = p["ambar"], p["grade"], p["fundo"]
+    plt.rcParams.update({
+        "font.family": "DejaVu Sans",
+        "font.size": 9.5,
+        "axes.edgecolor": p["borda"],
+        # Sem estas duas a área do gráfico continua branca no tema escuro, e os
+        # rótulos claros ficam ilegíveis em cima dela.
+        "axes.facecolor": p["fundo"],
+        "figure.facecolor": p["fundo"],
+        "axes.labelcolor": p["tinta"],
+        "text.color": p["tinta"],
+        "xtick.color": p["tinta"],
+        "ytick.color": p["tinta"],
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "figure.dpi": 160,
+    })
+
+
+usar_paleta(PALETA_CLARA)
 
 
 def _png(fig):
+    """Renderiza a figura em WebP, no fundo da paleta corrente.
+
+    WebP em vez de PNG: um gráfico de barras com texto cai para cerca de um
+    terço do tamanho sem diferença visível, e como agora cada um sai duas
+    vezes (claro e escuro) o documento fica menor do que era com uma só.
+    """
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=FUNDO)
     plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode()
+    buf.seek(0)
+    saida = io.BytesIO()
+    Image.open(buf).convert("RGB").save(saida, format="WEBP", quality=90, method=6)
+    return base64.b64encode(saida.getvalue()).decode()
+
+
+def figura(gerador, legenda, alt):
+    """Monta a figura com as duas versões do gráfico, claro e escuro."""
+    usar_paleta(PALETA_CLARA)
+    claro = gerador()
+    usar_paleta(PALETA_ESCURA)
+    escuro = gerador()
+    usar_paleta(PALETA_CLARA)
+    return (
+        f'<figure><img class="claro" src="data:image/webp;base64,{claro}" alt="{alt}">'
+        f'<img class="escuro" src="data:image/webp;base64,{escuro}" alt="{alt}">'
+        f"<figcaption>{legenda}</figcaption></figure>"
+    )
 
 
 def grafico_modelos():
@@ -59,12 +119,12 @@ def grafico_modelos():
     ax.text(5.48, 6.98, "meta: 6,8 °C", color=VERMELHO, fontsize=8.5, ha="right")
 
     for b, v in zip(barras, mae):
-        ax.text(b.get_x() + b.get_width() / 2, v + 0.22, f"{v:.2f}".replace(".", ","),
+        ax.text(b.get_x() + b.get_width() / 2, v + 0.22, num(v, 2),
                 ha="center", fontsize=8.8, color=TINTA)
 
     ax.set_ylabel("MAE no teste (°C)")
     ax.set_ylim(0, 12.2)
-    ax.grid(axis="y", color="#eef1f3", zorder=0)
+    ax.grid(axis="y", color=GRADE, zorder=0)
     ax.set_title("Erro médio absoluto por modelo, em 488 corridas posteriores no tempo",
                  fontsize=10, pad=10, loc="left")
     return _png(fig)
@@ -74,14 +134,14 @@ def grafico_faixas():
     """Distribuição do erro em faixas operacionais."""
     faixas = ["até 3 °C", "3 a 6,8 °C", "6,8 a 10 °C", "10 a 20 °C", "acima de 20 °C"]
     pct = [38.5, 33.6, 15.0, 10.9, 2.0]
-    cores = [VERDE, VERDE, "#d9a441", VERMELHO, VERMELHO]
+    cores = [VERDE, VERDE, AMBAR, VERMELHO, VERMELHO]
 
     fig, ax = plt.subplots(figsize=(7.0, 2.6))
     esq = 0
     for p, c, f in zip(pct, cores, faixas):
         ax.barh([0], [p], left=esq, color=c, height=0.5, zorder=3)
         if p > 4:
-            ax.text(esq + p / 2, 0, f"{p:.1f}%".replace(".", ","), ha="center", va="center",
+            ax.text(esq + p / 2, 0, num(p) + "%", ha="center", va="center",
                     color="white", fontsize=9, fontweight="bold")
         esq += p
 
@@ -89,7 +149,7 @@ def grafico_faixas():
     ax.text(72.1, 0.42, "72,1% dentro da tolerância de ±6,8 °C", fontsize=8.5, ha="center", color=TINTA)
 
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in
-               [VERDE, "#d9a441", VERMELHO]]
+               [VERDE, AMBAR, VERMELHO]]
     ax.legend(handles, ["dentro da tolerância", "erro moderado (6,8 a 10 °C)",
                         "cauda, exige medição (>10 °C)"],
               loc="lower center", bbox_to_anchor=(0.5, -0.62), ncol=3, frameon=False, fontsize=8.3)
@@ -112,12 +172,12 @@ def grafico_cauda():
     fig, ax = plt.subplots(figsize=(7.0, 2.9))
     barras = ax.barh(itens, dif, color=cores, height=0.55, zorder=3)
     for b, v in zip(barras, dif):
-        ax.text(v + 0.9, b.get_y() + b.get_height() / 2, f"+{v:.1f}%".replace(".", ","),
+        ax.text(v + 0.9, b.get_y() + b.get_height() / 2, "+" + num(v) + "%",
                 va="center", fontsize=9, color=TINTA)
 
     ax.set_xlim(0, 46)
     ax.set_xlabel("diferença das corridas com erro > 10 °C em relação às demais")
-    ax.grid(axis="x", color="#eef1f3", zorder=0)
+    ax.grid(axis="x", color=GRADE, zorder=0)
     ax.invert_yaxis()
     ax.set_title("As corridas ruins se distinguem pelo tratamento, não pela entrada",
                  fontsize=10, pad=10, loc="left")
@@ -135,30 +195,41 @@ def grafico_impacto():
     barras = ax.bar(cenarios, pct, color=cores, width=0.5, zorder=3)
     for b, p, c in zip(barras, pct, ciclos):
         ax.text(b.get_x() + b.get_width() / 2, p + 0.28,
-                f"{p:.1f}%".replace(".", ","), ha="center", fontsize=10,
+                num(p) + "%", ha="center", fontsize=10,
                 fontweight="bold", color=TINTA)
         ax.text(b.get_x() + b.get_width() / 2, p / 2,
-                f"{c:.2f} ciclo\nevitado/corrida".replace(".", ","), ha="center", va="center",
+                num(c, 2) + " ciclo\nevitado/corrida", ha="center", va="center",
                 fontsize=8.3, color="white")
 
     ax.set_ylabel("% da energia de arco poupada")
     ax.set_ylim(0, 13.5)
-    ax.grid(axis="y", color="#eef1f3", zorder=0)
+    ax.grid(axis="y", color=GRADE, zorder=0)
     ax.set_title("Redução do desperdício por cenário de captura da margem de segurança",
                  fontsize=10, pad=10, loc="left")
     return _png(fig)
 
 
 # Onde cada gráfico entra: (âncora no HTML gerado, imagem, legenda)
+# Cada entrada: âncora, gerador, legenda e texto alternativo. O alt descreve os
+# números do gráfico; a legenda diz o que eles querem dizer. O alt vinha vazio,
+# e quem usa leitor de tela recebia só a legenda.
 GRAFICOS = [
     ("<h2>Seleção do modelo final</h2>", grafico_modelos,
-     "O erro cai de 10,42 °C sem modelo para 5,22 °C com o LightGBM calibrado, abaixo da meta de 6,8 °C."),
+     "O erro cai de 10,42 °C sem modelo para 5,22 °C com o LightGBM calibrado, abaixo da meta de 6,8 °C.",
+     "Gráfico de barras do erro médio por modelo: 10,42 °C sem modelo, 6,72 no Ridge, 5,63 na Random "
+     "Forest, 5,42 no CatBoost e 5,22 no LightGBM calibrado, com a meta de 6,8 °C marcada."),
     ("<h2>Onde o modelo erra", grafico_faixas,
-     "Sete em cada dez corridas ficam dentro da tolerância; a cauda acima de 10 °C responde por 12,9%."),
+     "Sete em cada dez corridas ficam dentro da tolerância; a cauda acima de 10 °C responde por 12,9%.",
+     "Barra empilhada com a distribuição do erro: 38,5% até 3 °C, 33,6% de 3 a 6,8 °C, 15,0% de 6,8 a "
+     "10 °C, 10,9% de 10 a 20 °C e 2,0% acima de 20 °C."),
     ("<h2>Estimativa de impacto no negócio</h2>", grafico_cauda,
-     "A temperatura de entrada quase não distingue as corridas ruins; o volume de tratamento sim, e ele é decidido antes da corrida."),
+     "A temperatura de entrada quase não distingue as corridas ruins; o volume de tratamento sim, e ele é decidido antes da corrida.",
+     "Gráfico de barras comparando as corridas com erro acima de 10 °C com as demais: energia total 38,7% "
+     "maior, duração do arco 27,5%, potência ativa 24,3% e temperatura inicial apenas 0,6%."),
     ("<h2>O que o modelo não sabe</h2>", grafico_impacto,
-     "Cenários de economia conforme quanto da margem de segurança a operação consiga liberar."),
+     "Cenários de economia conforme quanto da margem de segurança a operação consiga liberar.",
+     "Três cenários de economia: conservador com 2,8% e 0,13 ciclo evitado por corrida, central com 5,6% "
+     "e 0,26, e teto com 11,3% e 0,52."),
 ]
 
 # O CSS tem dois destinos e eles pedem coisas opostas. Na tela, o que cansa é
@@ -240,6 +311,10 @@ body > * { grid-column: 2; }
 /* Sem JavaScript os controles não funcionariam; então não aparecem, e o
    documento fica sendo o relatório completo — que é o comportamento correto. */
 .sem-js .barra { display: none; }
+/* Sem JS o corpo já vem em .modo-resumo, mas não há botão para sair dele.
+   Então sem script o leitor recebe o relatório inteiro, que é o documento. */
+.sem-js .exec { display: none; }
+.sem-js .capa, .sem-js .sumario, .sem-js .bloco, .sem-js .parte { display: block; }
 .modos button:focus-visible, .tema:focus-visible,
 a:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
 
@@ -296,6 +371,17 @@ figure, table, pre { grid-column: 1 / -1; justify-self: center; }
 figure, pre { width: 100%; }
 figure { margin: 1.8rem 0 2rem; max-width: var(--larga); text-align: center; }
 figure img { width: 100%; max-width: 100%; border-radius: 6px; }
+/* O tema vem do sistema ou do botão, que escreve data-theme na raiz. A media
+   query sozinha não enxerga o botão, então as duas condições ficam escritas. */
+figure img.escuro { display: none; }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) figure img.claro { display: none; }
+  html:not([data-theme="light"]) figure img.escuro { display: block; }
+}
+html[data-theme="dark"] figure img.claro { display: none; }
+html[data-theme="dark"] figure img.escuro { display: block; }
+html[data-theme="light"] figure img.claro { display: block; }
+html[data-theme="light"] figure img.escuro { display: none; }
 figcaption {
   font-family: var(--sans); font-size: .85rem; color: var(--fraca);
   margin-top: .6rem; text-align: left; border-left: 2.5px solid var(--azul);
@@ -317,16 +403,67 @@ pre { background: var(--suave); border-left: 3px solid var(--azul); padding: .8r
       overflow-x: auto; max-width: var(--larga); font-size: .84rem; margin: 1.2rem auto; }
 pre code { background: none; padding: 0; }
 
-/* ---------- modo de leitura ---------- */
+/* ---------- modo de leitura ----------
+   Três profundidades. "Uma página" não é um filtro sobre as seções do
+   relatório: nenhuma delas é curta o bastante (a menor tem 406 palavras).
+   É um resumo escrito para o cargo, e some inteiro nos outros dois modos. */
 .bloco[data-tec="1"], .parte[data-tec="1"] { display: block; }
-body.rapida .bloco[data-tec="1"], body.rapida .parte[data-tec="1"] { display: none; }
-body.rapida .sumario [data-tec="1"] { display: none; }
+body.modo-rapida .bloco[data-tec="1"], body.modo-rapida .parte[data-tec="1"] { display: none; }
+body.modo-rapida .sumario [data-tec="1"] { display: none; }
 .aviso-modo {
   display: none; font-family: var(--sans); font-size: .9rem;
   background: var(--realce); border: 1px solid var(--borda); border-left: 3px solid var(--azul);
   border-radius: 6px; padding: .8rem 1rem; margin: 1.6rem 0; color: var(--fraca);
 }
-body.rapida .aviso-modo { display: block; }
+body.modo-rapida .aviso-modo { display: block; }
+
+/* ---------- resumo executivo: o modo de uma página ---------- */
+.exec { display: none; grid-column: 1 / -1; }
+body.modo-resumo .exec { display: block; }
+body.modo-resumo .capa,
+body.modo-resumo .sumario,
+body.modo-resumo .bloco,
+body.modo-resumo .parte,
+body.modo-resumo .aviso-modo { display: none; }
+
+/* O resumo controla a própria largura, sem depender da grade do relatório. */
+.exec-dentro { max-width: 54rem; margin: 0 auto; padding: 2.4rem 1.3rem 0; }
+.exec h1 { font-size: clamp(1.9rem, 1.3rem + 2.4vw, 2.8rem); margin: 0 0 .2rem;
+           letter-spacing: -.02em; line-height: 1.1; }
+.exec .linha-fina { font-family: var(--sans); font-size: clamp(1.02rem, .95rem + .4vw, 1.2rem);
+                    color: var(--fraca); margin: 0 0 2rem; }
+.exec h2 { font-size: 1.1rem; margin: 2.6rem 0 .6rem; border: 0; padding: 0;
+           font-family: var(--sans); letter-spacing: .01em; }
+.exec p { margin: 0 0 1rem; }
+.exec figure { margin: 1.4rem 0 1.8rem; max-width: 100%; }
+
+.numeros {
+  display: grid; gap: .7rem; margin: 0 0 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+}
+.numero { background: var(--suave); border: 1px solid var(--borda);
+          border-radius: 8px; padding: .85rem 1rem; }
+.numero b { display: block; font-family: var(--sans); font-size: 1.45rem;
+            font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+            line-height: 1.15; color: var(--tinta); }
+.numero span { display: block; font-family: var(--sans); font-size: .78rem;
+               color: var(--fraca); margin-top: .2rem; line-height: 1.4; }
+
+/* A ressalva que o relatório faz sobre a conversão financeira, dita cedo. */
+.limite {
+  background: var(--realce); border: 1px solid var(--borda);
+  border-left: 3px solid var(--azul); border-radius: 6px;
+  padding: 1rem 1.2rem; margin: 2rem 0; font-family: var(--sans); font-size: .92rem;
+  color: var(--fraca);
+}
+.limite b { display: block; margin-bottom: .35rem; color: var(--tinta); }
+
+.exec .fundo { margin: 2.4rem 0 1rem; }
+.ir-fundo {
+  font-family: var(--sans); font-size: .92rem; background: none; color: var(--azul);
+  border: 1px solid var(--azul); border-radius: 6px; padding: .55rem 1.15rem; cursor: pointer;
+}
+.ir-fundo:hover { background: var(--realce); }
 .aviso-modo button {
   font: inherit; color: var(--azul); background: none; border: 0;
   padding: 0; cursor: pointer; text-decoration: underline;
@@ -341,9 +478,14 @@ body.rapida .aviso-modo { display: block; }
     font-size: 10.2pt; line-height: 1.62; background: #fff;
   }
   p { text-align: justify; hyphens: auto; margin: 0 0 9pt; }
-  .barra, .sumario, .aviso-modo { display: none !important; }
-  /* No papel nada é escondido: o PDF é sempre o relatório completo. */
+  .barra, .sumario, .aviso-modo, .exec { display: none !important; }
+  /* No papel nada é escondido: o PDF é sempre o relatório completo, esteja a
+     tela no modo que estiver. Sem a segunda regra, imprimir a partir do modo
+     de uma página rende quatro páginas quase vazias e nenhum gráfico. */
   .bloco[data-tec="1"], .parte[data-tec="1"] { display: block !important; }
+  body.modo-resumo .capa,
+  body.modo-resumo .bloco,
+  body.modo-resumo .parte { display: block !important; }
   .capa { padding: 0 0 12pt; margin-bottom: 6pt; }
   .capa h1 { font-size: 20pt; }
   .capa .sub { font-size: 12.5pt; margin-bottom: 14pt; }
@@ -357,6 +499,8 @@ body.rapida .aviso-modo { display: block; }
   table { display: table; width: auto; max-width: 100%; page-break-inside: avoid; }
   figure { margin: 14pt 0 18pt; }
   figure img { max-width: 165mm; border-radius: 0; }
+  figure img.claro { display: block !important; }
+  figure img.escuro { display: none !important; }
   figcaption { font-size: 8.6pt; margin-top: 5pt; padding-left: 7pt; line-height: 1.45; }
   table { font-size: 9.1pt; margin: 11pt auto 14pt; }
   th { padding: 5.5pt 7pt; } td { padding: 5pt 7pt; }
@@ -372,6 +516,58 @@ body.rapida .aviso-modo { display: block; }
 # Só entram títulos de nível 2 — a segmentação trabalha em h1 e h2, então um h3
 # listado aqui seria ignorado em silêncio. "Estimativa de impacto no negócio"
 # fica de fora de propósito: é a seção que mais interessa a quem lê rápido.
+def resumo_executivo():
+    """O modo de uma página, escrito para quem tem trinta segundos.
+
+    Não sai do Markdown de propósito: nenhuma seção do relatório é curta o
+    bastante para servir de resumo (a menor tem 406 palavras), e o que este
+    leitor precisa é dos números e da ressalva, nessa ordem. Todos os valores
+    daqui aparecem no relatório; nada é calculado neste arquivo.
+    """
+    return (
+        '<section class="exec" aria-label="Resumo em uma página"><div class="exec-dentro">'
+        "<h1>Steelproof</h1>"
+        '<p class="linha-fina">Prever a temperatura do aço antes de gastar a energia.</p>'
+        '<div class="numeros">'
+        '<div class="numero"><b>5,22 °C</b><span>erro médio do modelo</span></div>'
+        '<div class="numero"><b>6,8 °C</b><span>a meta do plano</span></div>'
+        '<div class="numero"><b>12,9%</b><span>das corridas erram mais de 10 °C</span></div>'
+        '<div class="numero"><b>2,8 a 5,6%</b><span>da energia de arco por corrida</span></div>'
+        "</div>"
+        "<h2>O problema</h2>"
+        "<p>No forno-panela a temperatura final sai por tentativa: aquece, mede, ainda está "
+        "frio, aquece de novo. Cada corrida leva em média 4,6 ciclos de aquecimento e 4,0 "
+        "medições de temperatura, e a planta faz cerca de 9.850 corridas e 40 mil medições "
+        "por ano. Cada medição gasta um sensor descartável e interrompe o processo.</p>"
+        "<h2>O resultado</h2>"
+        "<p>O modelo prevê a temperatura final com erro médio de 5,22 °C em 488 corridas "
+        "posteriores no tempo, que ele nunca viu. Chutando sempre a média histórica o erro "
+        "é 10,42 °C, e a meta fixada no plano de trabalho era 6,8 °C.</p>"
+        "<h2>Onde o modelo não deve ser usado</h2>"
+        + figura(
+            grafico_cauda,
+            "As corridas ruins se distinguem pelo tratamento, não pela entrada.",
+            "Gráfico de barras comparando as corridas com erro acima de 10 °C com as demais: "
+            "energia total 38,7% maior, duração do arco 27,5%, potência ativa 24,3% e "
+            "temperatura inicial apenas 0,6%.",
+        ) +
+        "<p>Uma corrida em cada oito erra mais de 10 °C, e nessas a previsão não substitui a "
+        "medição. O que separa essas corridas não é a temperatura de entrada e sim o volume "
+        "de tratamento, que é decidido antes de a corrida começar. Dá para saber de antemão "
+        "em qual corrida não confiar, e isso é mais útil que o erro médio.</p>"
+        "<h2>O que isso vale</h2>"
+        "<p>Encolher a margem de segurança térmica poupa entre 2,8% e 5,6% da energia de arco "
+        "por corrida, o equivalente a deixar de aplicar de 0,13 a 0,26 ciclo de aquecimento, "
+        "de um total médio de 4,6.</p>"
+        '<div class="limite"><b>O relatório não converte isso em reais.</b> '
+        "A unidade de <code>Active power</code> não está documentada nos dados, e a massa "
+        "implicada não fecha com a capacidade informada. O que está entregue é a fórmula com "
+        "o parâmetro em aberto e a pergunta a fazer para a planta.</div>"
+        '<p class="fundo"><button type="button" class="ir-fundo">Ler o relatório</button></p>'
+        "</div></section>"
+    )
+
+
 TECNICAS = {
     "Dados e qualidade iniciais",
     "Proteção contra vazamento de informação",
@@ -387,29 +583,37 @@ JS = """
   var raiz = document.documentElement, corpo = document.body;
   raiz.classList.remove('sem-js');
 
-  // --- modo de leitura: ?leitura=rapida abre direto no resumido ---
-  var btnRapida = document.getElementById('m-rapida');
-  var btnCompleta = document.getElementById('m-completa');
+  // --- modo de leitura: ?leitura=resumo|rapida|completa abre direto naquele ---
+  // Quem chega sem escolher cai no resumo de uma página: é o modo que responde
+  // "o que é isto" em trinta segundos. Os outros dois ficam a um clique.
+  var MODOS = ['resumo', 'rapida', 'completa'];
+  var botoes = {};
+  MODOS.forEach(function (m) { botoes[m] = document.getElementById('m-' + m); });
 
   function aplicar(modo, guardar) {
-    var rapida = modo === 'rapida';
-    corpo.classList.toggle('rapida', rapida);
-    btnRapida.setAttribute('aria-pressed', String(rapida));
-    btnCompleta.setAttribute('aria-pressed', String(!rapida));
+    if (MODOS.indexOf(modo) < 0) { modo = 'resumo'; }
+    MODOS.forEach(function (m) {
+      corpo.classList.toggle('modo-' + m, m === modo);
+      if (botoes[m]) { botoes[m].setAttribute('aria-pressed', String(m === modo)); }
+    });
     if (guardar) { try { localStorage.setItem('leitura', modo); } catch (e) {} }
   }
 
   var params = new URLSearchParams(location.search);
   var inicial = params.get('leitura');
-  if (inicial !== 'rapida' && inicial !== 'completa') {
+  if (MODOS.indexOf(inicial) < 0) {
     try { inicial = localStorage.getItem('leitura'); } catch (e) { inicial = null; }
   }
-  aplicar(inicial === 'rapida' ? 'rapida' : 'completa', false);
+  aplicar(inicial, false);
 
-  btnRapida.addEventListener('click', function () { aplicar('rapida', true); });
-  btnCompleta.addEventListener('click', function () { aplicar('completa', true); });
+  MODOS.forEach(function (m) {
+    if (botoes[m]) { botoes[m].addEventListener('click', function () { aplicar(m, true); }); }
+  });
   Array.prototype.forEach.call(document.querySelectorAll('.ver-tudo'), function (b) {
-    b.addEventListener('click', function () { aplicar('completa', true); });
+    b.addEventListener('click', function () { aplicar('completa', true); window.scrollTo(0, 0); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.ir-fundo'), function (b) {
+    b.addEventListener('click', function () { aplicar('rapida', true); window.scrollTo(0, 0); });
   });
 
   // --- tema: segue o sistema até o leitor escolher ---
@@ -556,7 +760,7 @@ def main():
     # modelos caía dentro de "Desempenho comparado", que é uma seção de método
     # e fica oculta — sumindo justamente o gráfico com o número central do
     # trabalho, para o leitor que menos vai atrás dele.
-    for ancora, gerador, legenda in GRAFICOS:
+    for ancora, gerador, legenda, alt in GRAFICOS:
         pos = corpo.find(ancora)
         if pos == -1:
             print(f"  aviso: ancora nao encontrada -> {ancora[:40]}")
@@ -566,9 +770,7 @@ def main():
             print(f"  aviso: titulo sem fechamento -> {ancora[:40]}")
             continue
         fim += len("</h2>")
-        fig_html = (f'\n<figure><img src="data:image/png;base64,{gerador()}" alt="">'
-                    f"<figcaption>{legenda}</figcaption></figure>\n")
-        corpo = corpo[:fim] + fig_html + corpo[fim:]
+        corpo = corpo[:fim] + "\n" + figura(gerador, legenda, alt) + "\n" + corpo[fim:]
 
     # A capa é tudo até a primeira régua: título, subtítulo e a linha de autoria.
     capa_bruta, _, resto = corpo.partition("<hr />")
@@ -600,9 +802,9 @@ def main():
     )
     aviso = (
         '<p class="aviso-modo">Você está na <strong>leitura rápida</strong>: '
-        f"{escondidas} seções de método estão ocultas — como os dados foram tratados, "
-        "que modelos foram comparados e como os hiperparâmetros foram escolhidos. "
-        'Os números e as conclusões são os mesmos. '
+        f"{escondidas} seções de método estão ocultas, entre elas como os dados foram "
+        "tratados e como os hiperparâmetros foram escolhidos. Os números e as conclusões "
+        "são os mesmos. "
         '<button type="button" class="ver-tudo">Ver o relatório completo</button></p>'
     )
     barra = (
@@ -610,8 +812,9 @@ def main():
         '<span class="progresso"></span>'
         '<span class="quem"></span>'
         '<span class="modos" role="group" aria-label="Modo de leitura">'
+        '<button type="button" id="m-resumo" aria-pressed="true">Uma página</button>'
         '<button type="button" id="m-rapida" aria-pressed="false">Leitura rápida</button>'
-        '<button type="button" id="m-completa" aria-pressed="true">Completo</button>'
+        '<button type="button" id="m-completa" aria-pressed="false">Completo</button>'
         "</span>"
         '<button type="button" class="tema" id="tema" aria-label="Alternar tema"></button>'
         "</div>"
@@ -623,8 +826,8 @@ def main():
         "<title>Relatório de solução: Steelproof</title>"
         '<meta name="description" content="Previsão da temperatura final do banho no '
         'forno-panela: erro médio de 5,22 °C, contra 10,42 °C sem modelo.">'
-        f"<style>{CSS}</style></head><body>"
-        f"{barra}{capa}{montar_sumario(soltos, partes)}{aviso}{conteudo}"
+        f'<style>{CSS}</style></head><body class="modo-resumo">'
+        f"{barra}{resumo_executivo()}{capa}{montar_sumario(soltos, partes)}{aviso}{conteudo}"
         f"<script>{JS}</script></body></html>"
     )
     saida = AQUI / "Relatorio-Etapa3.html"
